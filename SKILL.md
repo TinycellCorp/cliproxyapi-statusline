@@ -1,5 +1,5 @@
 ---
-name: cliproxy-statusline
+name: cliproxyapi-statusline
 description: Display cliproxyapi proxy multi-account quota usage in Claude Code statusline. cliproxyapi 프록시 서버의 다중 계정 쿼터 사용량을 Claude Code 상태라인에 표시하는 스킬.
 disable-model-invocation: true
 user-invocable: true

@@ -53,10 +53,12 @@ oh-my-claudecode(OMC) HUD를 사용하는 경우, HUD 출력에 쿼터 라인을
 ## Repository Structure
 
 ```
-skills/
-└── cliproxy-statusline/
-    ├── SKILL.md
-    └── references/omc-hud.md
+cliproxyapi-statusline/    ← repo root = skill directory
+├── SKILL.md               ← name: cliproxyapi-statusline
+├── references/omc-hud.md
+├── README.md
+├── LICENSE
+└── .gitignore
 ```
 
 Built on the [Agent Skills](https://agentskills.io/specification) open standard.

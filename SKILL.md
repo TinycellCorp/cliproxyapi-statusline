@@ -243,18 +243,18 @@ function formatRemaining(resetsAt) {
 import { request } from 'node:https';
 
 function httpGet(url, headers = {}) {
-  return new Promise((resolve, reject) => {
-    const req = request(url, { headers }, res => {
+  return new Promise((resolve) => {
+    const mod = url.startsWith('https') ? require('node:https') : require('node:http');
+    const req = mod.get(url, { headers, timeout: 5000 }, res => {
       let body = '';
       res.on('data', chunk => body += chunk);
       res.on('end', () => {
         try { resolve(JSON.parse(body)); }
-        catch { reject(new Error(`JSON parse failed: ${body}`)); }
+        catch { resolve(null); }
       });
     });
-    req.on('error', reject);
-    req.setTimeout(5000, () => { req.destroy(); reject(new Error('timeout')); });
-    req.end();
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
   });
 }
 ```
@@ -335,7 +335,7 @@ async function fetchProxyUsage(proxyUrl, mgmtKey) {
   // 2. 각 파일에서 토큰 다운로드
   const tokens = await Promise.all(
     claudeFiles.map(f =>
-      httpGet(`${proxyUrl}/v0/management/auth-files/download?name=${f.name}`, authHeader)
+      httpGet(`${proxyUrl}/v0/management/auth-files/download?name=${encodeURIComponent(f.name)}`, authHeader)
         .then(d => d.access_token)
     )
   );

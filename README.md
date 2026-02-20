@@ -50,7 +50,14 @@ Q2 5h:[██████░░]78%(0h43m) wk:[████░░░░]52%(3d12
 
 oh-my-claudecode(OMC) HUD를 사용하는 경우, HUD 출력에 쿼터 라인을 통합할 수도 있습니다 (선택 사항).
 
-## Specification
+## Repository Structure
+
+```
+skills/
+└── cliproxy-statusline/
+    ├── SKILL.md
+    └── references/omc-hud.md
+```
 
 Built on the [Agent Skills](https://agentskills.io/specification) open standard.
 

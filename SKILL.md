@@ -295,12 +295,30 @@ weekly utilization 내림차순 정렬 → 가장 높은 계정이 현재 활성
 accounts.sort((a, b) => b.seven_day.utilization - a.seven_day.utilization);
 ```
 
-### 4-4. 전체 조회 함수
+### 4-4. 프록시 활성 판별
+
+현재 세션이 프록시를 경유하는지 판별합니다. `ANTHROPIC_BASE_URL` 환경변수가 설정되어 있고, 그 값이 설정 파일의 `proxyUrl`과 동일한 호스트를 가리킬 때만 프록시 세션으로 간주합니다.
+
+```javascript
+function isProxySession(config) {
+  const baseUrl = process.env.ANTHROPIC_BASE_URL;
+  if (!baseUrl) return false;
+  try {
+    const proxyHost = new URL(config.proxyUrl).host;
+    const sessionHost = new URL(baseUrl).host;
+    return proxyHost === sessionHost;
+  } catch {
+    return false;
+  }
+}
+```
+
+### 4-5. 전체 조회 함수
 
 ```javascript
 const config = loadConfig();
-if (!config) {
-  // 설정 파일 없음 -- 쿼터 라인 생략
+if (!config || !isProxySession(config)) {
+  // 설정 없음 또는 프록시 비경유 세션 -- 쿼터 라인 생략
   process.stdout.write('\n');
   process.exit(0);
 }
@@ -336,7 +354,7 @@ async function fetchProxyUsage(proxyUrl, mgmtKey) {
 const usages = await fetchProxyUsage(config.proxyUrl, config.managementKey);
 ```
 
-### 4-5. 표시 렌더링
+### 4-6. 표시 렌더링
 
 ```javascript
 function colorize(utilization, text) {
@@ -416,6 +434,19 @@ const config = loadConfig(); // ~/.cliproxy-statusline.json
 const { proxyUrl, managementKey } = config;
 ```
 
+### 프록시 경유인데 쿼터가 표시되지 않음
+
+**증상**: 프록시를 통해 접속했는데 쿼터 라인이 표시되지 않음.
+
+**원인**: `isProxySession()`은 `process.env.ANTHROPIC_BASE_URL`을 확인합니다. 이 환경변수가 셸 레벨에서 설정되어야 statusLine 프로세스가 상속받을 수 있습니다. `settings.json`의 `env` 섹션에만 설정된 경우 statusLine 프로세스에는 전달되지 않습니다.
+
+**해결**: 프록시 실행 래퍼(예: `ccs` alias)에서 `ANTHROPIC_BASE_URL`을 셸 환경변수로 export합니다:
+
+```bash
+export ANTHROPIC_BASE_URL="http://localhost:3000"
+claude  # 이 프로세스와 statusLine이 환경변수를 상속받음
+```
+
 ### OMC non-breaking space 변환으로 문자열 매칭 실패
 
 **증상**: OMC HUD가 출력 문자열 내 일반 공백을 `\u00A0`(non-breaking space)으로 변환하여 정규식이나 문자열 비교가 실패함.
@@ -434,7 +465,7 @@ const normalized = str.replace(/\u00A0/g, ' ');
 
 ```javascript
 const config = loadConfig();
-if (!config) {
+if (!config || !isProxySession(config)) {
   process.stdout.write('\n');
   process.exit(0);
 }

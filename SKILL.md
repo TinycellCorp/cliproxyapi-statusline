@@ -1,7 +1,6 @@
 ---
 name: cliproxyapi-statusline
 description: Display cliproxyapi proxy multi-account quota usage in Claude Code statusline. cliproxyapi 프록시 서버의 다중 계정 쿼터 사용량을 Claude Code 상태라인에 표시하는 스킬.
-disable-model-invocation: true
 user-invocable: true
 license: MIT
 compatibility: Designed for Claude Code. Requires Node.js and access to a cliproxyapi proxy server.
@@ -101,13 +100,15 @@ GET {PROXY_URL}/v0/management/auth-files
 Authorization: Bearer {MGMT_KEY}
 ```
 
-응답: auth file 배열. `provider === "claude"` 항목만 필터링합니다.
+응답: `files` 배열을 포함하는 객체. `provider === "claude"` 항목만 필터링합니다.
 
 ```json
-[
-  { "name": "account1.json", "provider": "claude" },
-  { "name": "account2.json", "provider": "claude" }
-]
+{
+  "files": [
+    { "name": "account1.json", "provider": "claude" },
+    { "name": "account2.json", "provider": "claude" }
+  ]
+}
 ```
 
 ### 2-2. 계정별 토큰 다운로드
@@ -142,7 +143,7 @@ anthropic-beta: oauth-2025-04-20
 }
 ```
 
-- `utilization`: 0.0 ~ 1.0 사용률
+- `utilization`: 퍼센트 단위 (예: 37.0 = 37%). 코드에서 0.0~1.0 비율로 정규화 필요
 - `resets_at`: ISO 8601 리셋 시각
 
 ---
@@ -326,8 +327,9 @@ if (!config || !isProxySession(config)) {
 async function fetchProxyUsage(proxyUrl, mgmtKey) {
   const authHeader = { Authorization: `Bearer ${mgmtKey}` };
 
-  // 1. auth-files 목록
-  const files = await httpGet(`${proxyUrl}/v0/management/auth-files`, authHeader);
+  // 1. auth-files 목록 (응답이 {files:[...]} 객체)
+  const resp = await httpGet(`${proxyUrl}/v0/management/auth-files`, authHeader);
+  const files = resp.files || [];
   const claudeFiles = files.filter(f => f.provider === 'claude');
 
   // 2. 각 파일에서 토큰 다운로드
@@ -354,7 +356,17 @@ async function fetchProxyUsage(proxyUrl, mgmtKey) {
 const usages = await fetchProxyUsage(config.proxyUrl, config.managementKey);
 ```
 
-### 4-6. 표시 렌더링
+### 4-6. utilization 정규화
+
+Anthropic API는 utilization을 퍼센트 단위(예: 37.0 = 37%)로 반환합니다. 내부적으로 0.0~1.0 비율로 정규화합니다.
+
+```javascript
+function normalizeUtil(val) {
+  return val > 1 ? val / 100 : val;
+}
+```
+
+### 4-7. 표시 렌더링
 
 ```javascript
 function colorize(utilization, text) {
@@ -366,8 +378,8 @@ function colorize(utilization, text) {
 
 function renderQuota(usages) {
   return usages.map((u, i) => {
-    const fh = u.five_hour;
-    const wk = u.seven_day;
+    const fh = { utilization: normalizeUtil(u.five_hour.utilization), resets_at: u.five_hour.resets_at };
+    const wk = { utilization: normalizeUtil(u.seven_day.utilization), resets_at: u.seven_day.resets_at };
     const fhPct = Math.round(fh.utilization * 100);
     const wkPct = Math.round(wk.utilization * 100);
     return (
@@ -461,7 +473,7 @@ const normalized = str.replace(/\u00A0/g, ' ');
 
 **증상**: 최초 실행 시 쿼터 라인이 표시되지 않음.
 
-**동작 (정상)**: 캐시 파일이 없으면 백그라운드에서 fetch를 시작하고, 현재 렌더링에서는 쿼터 라인을 생략합니다. 다음 렌더링부터 표시됩니다.
+**동작 (정상)**: 캐시 파일이 없으면 fetch를 await하여 캐시를 생성하고, 결과를 표시합니다.
 
 ```javascript
 const config = loadConfig();
@@ -475,14 +487,19 @@ const { data, stale, dead } = readCache();
 if (!dead && data) {
   output = renderQuota(data);
   if (stale) {
+    // stale: 기존 캐시 표시 후 백그라운드 갱신 (fire-and-forget OK)
     fetchProxyUsage(config.proxyUrl, config.managementKey)
       .then(writeCache)
       .catch(() => {});
   }
 } else {
-  fetchProxyUsage(config.proxyUrl, config.managementKey)
-    .then(writeCache)
-    .catch(() => {});
-  output = '';
+  // dead 또는 캐시 없음: await로 fetch 완료 대기
+  try {
+    const fresh = await fetchProxyUsage(config.proxyUrl, config.managementKey);
+    writeCache(fresh);
+    output = renderQuota(fresh);
+  } catch {
+    output = '';
+  }
 }
 ```
